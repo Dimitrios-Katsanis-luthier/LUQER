@@ -1,2 +1,3 @@
 # MAGTUNE
-firmware and mapper for MagTune device
+firmware, mapper and manual for MagTune device
+
