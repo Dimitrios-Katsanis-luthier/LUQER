@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Magtune Precision Mapper Pro V1.1</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+:root{
+    --bg:#121417;
+    --card:#1c1f24;
+    --accent:#3498db;
+    --border:#333;
+    --success:#2ecc71;
+}
+body{margin:0;font-family:'Segoe UI', Arial, sans-serif;background:var(--bg);color:#e0e0e0; overflow: hidden;}
+
+/* --- Sidebar --- */
+.sidebar{
+    position:fixed;left:0;top:0;width:320px;height:100vh;
+    background:var(--card);padding:20px;display:flex;flex-direction:column;gap:10px;
+    border-right: 1px solid var(--border);
+    box-sizing: border-box; z-index: 10;
+}
+.sidebar-scroll{ flex: 1; overflow-y: auto; padding-right: 5px; }
+input, select{
+    background:#000;border:1px solid var(--border);color:#fff;
+    padding:10px;border-radius:6px;width: 100%;box-sizing: border-box; margin-bottom: 5px;
+}
+.btn{
+    padding:12px;border:none;border-radius:6px;
+    cursor:pointer;font-weight:bold;transition: opacity 0.2s;
+}
+.btn:hover{opacity: 0.8;}
+.btn-blue{background:#3498db;color:white;}
+.btn-red{background:#e74c3c;color:white;}
+.btn-green{background:#2ecc71;color:white;}
+.btn-gray{background:#444;color:white;}
+.btn-orange{background:#f39c12;color:white;}
+.btn-purple{background:#9b59b6;color:white;}
+#fileInput{display:none;}
+
+/* --- Points List --- */
+.points-list{ margin-top: 15px; display: flex; flex-direction: column; gap: 5px; }
+.point-item{
+    background: #000; padding: 8px 12px; border-radius: 4px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; border-left: 4px solid var(--accent);
+}
+.point-item:hover{ background: #222; cursor: pointer;}
+.point-item.selected { border-color: #f1c40f; background: #222; }
+.del-btn { color: #e74c3c; cursor: pointer; font-weight: bold; padding: 0 5px; font-size: 16px; }
+
+.app{ margin-left:320px; height:100vh; display:flex; flex-direction: column; }
+.workspace{
+    flex:1; overflow: hidden; position: relative;
+    background: #09090b; display: flex; align-items: center; justify-content: center;
+}
+canvas{ background: #000; cursor: crosshair; }
+
+.control-label { font-size: 11px; color: #888; margin-top: 5px; display: block; font-weight: bold; }
+.zoom-controls {
+    position: absolute; bottom: 20px; right: 20px;
+    display: flex; gap: 5px; background: rgba(0,0,0,0.5);
+    padding: 10px; border-radius: 8px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="sidebar">
+    <h2 style="color:#3498db;margin:0;letter-spacing: -1px;">MAGTUNE PRO</h2>
+    
+    <label class="btn btn-blue" for="fileInput" style="text-align:center;margin-top:10px;">IMPORT IMAGE</label>
+    <input type="file" id="fileInput" accept="image/*">
+
+    <div class="sidebar-scroll">
+        <label class="control-label">GUITAR MODEL</label>
+        <input type="text" id="model" placeholder="Model Name">
+        <label class="control-label">SERIAL NUMBER</label>
+        <input type="text" id="serial" placeholder="S/N">
+        <label class="control-label">ADDITIONAL INFO</label>
+        <input type="text" id="info" placeholder="Technician/Notes">
+
+        <label class="control-label">CONTOUR OPACITY</label>
+        <input type="range" id="opacity" min="0" max="100" value="50" oninput="draw()">
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px;">
+            <button class="btn btn-gray" onclick="toggleLabels()" id="toggleBtn">LABELS: ON</button>
+            <button class="btn btn-orange" onclick="toggleHeatmap()" id="heatBtn">HEATMAP: OFF</button>
+        </div>
+        <button class="btn btn-purple" style="width:100%; margin-top:10px;" onclick="toggleTraceMode()" id="traceBtn">TRACE OUTLINE: OFF</button>
+        <div class="points-list" id="pointsList"></div>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+        <button class="btn btn-blue" onclick="undo()">UNDO</button>
+        <button class="btn btn-red" onclick="resetAll()">RESET</button>
+    </div>
+    <button class="btn btn-green" onclick="exportPDF()">EXPORT PDF REPORT</button>
+</div>
+
+<div class="app">
+    <div class="workspace" id="workspace">
+        <canvas id="canvas"></canvas>
+        <div class="zoom-controls">
+            <button class="btn btn-gray" onclick="adjustZoom(1.2)">+</button>
+            <button class="btn btn-gray" onclick="adjustZoom(0.8)">-</button>
+            <button class="btn btn-gray" onclick="resetZoom()">FIT</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+const fileInput=document.getElementById("fileInput");
+const workspace=document.getElementById("workspace");
+
+let img=new Image();
+let markers=[];
+let maskPoints=[];
+let traceMode=false;
+let currentPoint=null;
+let inputBuffer="";
+let selectedIndex = null;
+let showLabels=true;
+let heatmapMode=false;
+
+/* ===== ZOOM & PAN STATE ===== */
+let scale = 1;
+let offsetX = 0;
+let offsetY = 0;
+let isPanning = false;
+let dragIndex = null;
+let startX, startY;
+
+function getImgPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const mouseY = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    return { x: (mouseX - offsetX) / scale, y: (mouseY - offsetY) / scale };
+}
+
+function adjustZoom(factor) { scale *= factor; draw(); }
+function resetZoom() {
+    if(!img.src) return;
+    const ratio = Math.min(workspace.clientWidth / img.width, workspace.clientHeight / img.height);
+    scale = ratio * 0.9;
+    offsetX = (workspace.clientWidth - img.width * scale) / 2;
+    offsetY = (workspace.clientHeight - img.height * scale) / 2;
+    draw();
+}
+
+workspace.addEventListener('wheel', (e) => {
+    if(!img.src) return; e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const mouseBefore = getImgPos(e);
+    scale *= delta;
+    const mouseAfter = getImgPos(e);
+    offsetX += (mouseAfter.x - mouseBefore.x) * scale;
+    offsetY += (mouseAfter.y - mouseBefore.y) * scale;
+    draw();
+}, { passive: false });
+
+workspace.addEventListener('mousedown', (e) => {
+    if(e.button === 1 || e.altKey) { 
+        isPanning = true; startX = e.clientX - offsetX; startY = e.clientY - offsetY;
+        return;
+    }
+    const p = getImgPos(e);
+    const i = markers.findIndex(m => Math.hypot(m.x - p.x, m.y - p.y) < (15 / scale));
+    if (i !== -1) { dragIndex = i; selectedIndex = i; updatePointsList(); return; }
+    if (traceMode) { maskPoints.push(p); draw(); return; }
+    currentPoint = p; selectedIndex = null; draw();
+});
+
+window.addEventListener('mousemove', (e) => {
+    if(isPanning) { offsetX = e.clientX - startX; offsetY = e.clientY - startY; draw(); }
+    if(dragIndex !== null) { 
+        const p = getImgPos(e);
+        markers[dragIndex].x = p.x; markers[dragIndex].y = p.y;
+        draw(); 
+    }
+});
+
+window.addEventListener('mouseup', () => { isPanning = false; dragIndex = null; });
+
+/* ===== COLOR ENGINE ===== */
+function toggleHeatmap() { heatmapMode = !heatmapMode; draw(); updatePointsList(); }
+
+function getSmoothColor(val) {
+    if (markers.length < 2) return { r: 52, g: 152, b: 219, hex: "#3498db" };
+    const values = markers.map(m => m.value);
+    const max = Math.max(...values), min = Math.min(...values);
+    const range = max - min;
+    const norm = range === 0 ? 0.5 : (val - min) / range;
+    const colors = [
+        { p: 0.0, r: 52,  g: 152, b: 219 }, { p: 0.25, r: 46,  g: 204, b: 113 }, 
+        { p: 0.5, r: 241, g: 196, b: 15 },  { p: 0.75, r: 230, g: 126, b: 34 }, { p: 1.0, r: 231, g: 76,  b: 60 }
+    ];
+    let lower = colors[0], upper = colors[colors.length - 1];
+    for (let i = 0; i < colors.length - 1; i++) {
+        if (norm >= colors[i].p && norm <= colors[i+1].p) { lower = colors[i]; upper = colors[i+1]; break; }
+    }
+    const segNorm = (norm - lower.p) / (upper.p - lower.p);
+    const r = Math.round(lower.r + segNorm * (upper.r - lower.r));
+    const g = Math.round(lower.g + segNorm * (upper.g - lower.g));
+    const b = Math.round(lower.b + segNorm * (upper.b - lower.b));
+    return { r, g, b, hex: `rgb(${r},${g},${b})` };
+}
+
+function drawSurfaceMap(targetCtx, w, h) {
+    if (markers.length < 3) return;
+    const gridSize = 10; const opacity = document.getElementById("opacity").value / 100;
+    targetCtx.save();
+    if (maskPoints.length > 2) {
+        targetCtx.beginPath(); targetCtx.moveTo(maskPoints[0].x, maskPoints[0].y);
+        for(let i=1; i<maskPoints.length; i++) targetCtx.lineTo(maskPoints[i].x, maskPoints[i].y);
+        targetCtx.closePath(); targetCtx.clip();
+    }
+    for (let x = 0; x < w; x += gridSize) {
+        for (let y = 0; y < h; y += gridSize) {
+            let sumW = 0, sumV = 0, found = false;
+            for (let m of markers) {
+                const d = Math.hypot(x - m.x, y - m.y);
+                if (d < gridSize) { sumV = m.value; found = true; break; }
+                const weight = 1 / Math.pow(d, 2.5); sumV += m.value * weight; sumW += weight;
+            }
+            const val = found ? sumV : (sumV / sumW);
+            targetCtx.globalAlpha = opacity; targetCtx.fillStyle = getSmoothColor(val).hex;
+            targetCtx.fillRect(x, y, gridSize, gridSize);
+        }
+    }
+    targetCtx.restore();
+}
+
+/* ===== APP LOGIC ===== */
+fileInput.onchange=e=>{
+    const file=e.target.files[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=evt=>{
+        img=new Image();
+        img.onload=()=>{ canvas.width = workspace.clientWidth; canvas.height = workspace.clientHeight; resetZoom(); };
+        img.src=evt.target.result;
+    };
+    reader.readAsDataURL(file);
+};
+
+window.onkeydown=e=>{
+    if(!currentPoint) return;
+    if(e.key==="Enter"){
+        if(inputBuffer==="")return;
+        markers.push({ x:currentPoint.x, y:currentPoint.y, value:parseFloat(inputBuffer) });
+        inputBuffer=""; currentPoint=null; updatePointsList(); draw();
+    } else if(e.key==="Backspace"){ inputBuffer=inputBuffer.slice(0,-1); draw(); 
+    } else if(/^[0-9.\-]$/.test(e.key)){ inputBuffer+=e.key; draw(); }
+};
+
+function updatePointsList(){
+    const list = document.getElementById("pointsList");
+    list.innerHTML = markers.length ? '<label class="control-label">LOGGED POINTS</label>' : '';
+    markers.forEach((m, i) => {
+        const item = document.createElement("div");
+        item.className = `point-item ${selectedIndex === i ? 'selected' : ''}`;
+        item.style.borderLeftColor = getSmoothColor(m.value).hex;
+        item.innerHTML = `<span><b>${i+1}.</b> ${m.value}mm</span><span class="del-btn" onclick="deletePoint(${i}, event)">✕</span>`;
+        item.onclick = () => { selectedIndex = i; draw(); };
+        list.appendChild(item);
+    });
+}
+
+function deletePoint(index, event){
+    event.stopPropagation(); markers.splice(index, 1); updatePointsList(); draw();
+}
+
+function draw(){
+    if(!img.src) return;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.save();
+    ctx.translate(offsetX, offsetY); ctx.scale(scale, scale);
+    ctx.drawImage(img,0,0);
+    if (heatmapMode) drawSurfaceMap(ctx, img.width, img.height);
+    if (maskPoints.length > 0) {
+        ctx.beginPath(); ctx.setLineDash([5/scale, 5/scale]); ctx.moveTo(maskPoints[0].x, maskPoints[0].y);
+        for(let i=1; i<maskPoints.length; i++) ctx.lineTo(maskPoints[i].x, maskPoints[i].y);
+        if(!traceMode) ctx.closePath();
+        ctx.strokeStyle = "#9b59b6"; ctx.lineWidth = 2/scale; ctx.stroke(); ctx.setLineDash([]);
+    }
+    markers.forEach((m, i)=>{
+        const color = getSmoothColor(m.value).hex;
+        ctx.beginPath(); ctx.arc(m.x, m.y, 6/scale, 0, Math.PI*2);
+        ctx.fillStyle = color; ctx.fill();
+        ctx.strokeStyle = (selectedIndex === i) ? "#fff" : "rgba(255,255,255,0.5)";
+        ctx.lineWidth = 2/scale; ctx.stroke();
+        ctx.fillStyle = "#fff"; ctx.font = `bold ${10/scale}px Arial`; ctx.textAlign = "center";
+        ctx.fillText(i+1, m.x, m.y - (10/scale));
+        if(showLabels){ ctx.font = `${12/scale}px Arial`; ctx.textAlign = "left"; ctx.fillText(m.value + " mm", m.x + (12/scale), m.y); }
+    });
+    if(currentPoint){
+        ctx.beginPath(); ctx.arc(currentPoint.x,currentPoint.y,6/scale,0,Math.PI*2);
+        ctx.fillStyle="#f1c40f"; ctx.fill();
+        if(inputBuffer){ ctx.fillStyle="#f1c40f"; ctx.font=`bold ${14/scale}px Arial`; ctx.fillText(inputBuffer+" mm", currentPoint.x+(12/scale), currentPoint.y); }
+    }
+    ctx.restore();
+}
+
+function toggleTraceMode() { traceMode = !traceMode; document.getElementById("traceBtn").innerText = "TRACE: " + (traceMode?"ON":"OFF"); draw(); }
+function toggleLabels() { showLabels = !showLabels; draw(); }
+function undo() { if(traceMode) maskPoints.pop(); else markers.pop(); updatePointsList(); draw(); }
+function resetAll() { if(confirm("Reset everything?")){ markers=[]; maskPoints=[]; draw(); updatePointsList(); } }
+
+/* ===== FINAL PDF EXPORT ===== */
+function exportPDF(){
+    const { jsPDF } = window.jspdf;
+    const pdf=new jsPDF("landscape","mm","a4");
+    const pageW=297, pageH=210, margin=10, rightW=85;
+
+    const eCanv = document.createElement("canvas");
+    const eCtx = eCanv.getContext("2d");
+    eCanv.width = img.width; eCanv.height = img.height;
+    eCtx.drawImage(img,0,0);
+    if(heatmapMode) drawSurfaceMap(eCtx, img.width, img.height);
+    markers.forEach((m, i)=>{
+        eCtx.beginPath(); eCtx.arc(m.x, m.y, 10, 0, Math.PI*2);
+        eCtx.fillStyle = getSmoothColor(m.value).hex; eCtx.fill();
+        eCtx.strokeStyle = "white"; eCtx.lineWidth = 2; eCtx.stroke();
+        eCtx.fillStyle="white"; eCtx.font="bold 16px Arial"; eCtx.textAlign="center";
+        eCtx.fillText(i+1, m.x, m.y-15);
+    });
+
+    const imgData = eCanv.toDataURL("image/jpeg", 0.9);
+    const ratio = img.width/img.height;
+    let w = pageW-rightW-20, h = w/ratio;
+    if(h > pageH-20){ h=pageH-20; w=h*ratio; }
+    pdf.addImage(imgData, "JPEG", 10, (pageH-h)/2, w, h);
+
+    pdf.setFillColor(28, 31, 36); pdf.rect(pageW-rightW, 0, rightW, pageH, 'F');
+    pdf.setTextColor(52, 152, 219); pdf.setFontSize(14); pdf.text("MAGTUNE REPORT", pageW-rightW+5, 15);
+    
+    // Custom Date Formatting to DD/MM/YYYY
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const dateStr = `${day}/${month}/${year}`;
+    
+    pdf.setTextColor(150,150,150); pdf.setFontSize(8); pdf.text(dateStr, pageW-5, 15, {align:'right'});
+    
+    pdf.setTextColor(255,255,255); pdf.setFontSize(9);
+    let curY = 30;
+    const meta = [
+        {l:"Model", v:document.getElementById("model").value},
+        {l:"Serial", v:document.getElementById("serial").value},
+        {l:"Info", v:document.getElementById("info").value}
+    ];
+    meta.forEach(m => {
+        const txt = pdf.splitTextToSize(`${m.l}: ${m.v || "N/A"}`, rightW-10);
+        pdf.text(txt, pageW-rightW+5, curY); curY += (txt.length*4.5)+2;
+    });
+
+    curY += 5;
+    pdf.setDrawColor(80,80,80); pdf.line(pageW-rightW+5, curY, pageW-5, curY);
+    curY += 7; pdf.text("Measurements (mm):", pageW-rightW+5, curY);
+    curY += 8;
+
+    const startY = curY; let currentCol = 0; let itemY = startY;
+    pdf.setFontSize(7);
+    markers.forEach((m, i) => {
+        if (itemY > pageH - 10) { currentCol++; itemY = startY; }
+        const x = (pageW-rightW+5) + (currentCol*26);
+        if (x < pageW-5) {
+            pdf.setTextColor(180,180,180); pdf.text(`${i+1}.`, x, itemY);
+            const c = getSmoothColor(m.value); pdf.setTextColor(c.r, c.g, c.b);
+            pdf.text(`${m.value}`, x+6, itemY); itemY += 4.5;
+        }
+    });
+    pdf.save("Magtune_Report.pdf");
+}
+</script>
+</body>
+</html>
