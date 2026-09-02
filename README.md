@@ -38,7 +38,7 @@ Output Format	USB HID (Keyboard Emulation)
 Export Formats	PDF, DXF (CAD), SVG, PNG
 
 ⚖️ License & Security
-This software is protected by a hardware-level license key. It is authorized only for use on genuine Magtune Pro hardware. Unauthorized cloning or distribution of the firmware is prohibited.
+Firmware is protected by a hardware-level license key. It is authorized only for use on genuine Luqer Pro hardware. Unauthorized cloning or distribution of the firmware is prohibited.
 
 Developed with ❤️ for the Luthier Community.
 
