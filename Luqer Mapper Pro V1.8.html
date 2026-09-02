@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Luqer Mapper Pro</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+:root{
+    --bg:#121417;
+    --card:#1c1f24;
+    --accent:#3498db;
+    --border:#333;
+    --success:#2ecc71;
+    --danger:#e74c3c;
+}
+body{margin:0;font-family:'Segoe UI', Arial, sans-serif;background:var(--bg);color:#e0e0e0; overflow: hidden; display: flex;}
+
+/* --- Sidebar Left (Controls) --- */
+.sidebar-left{
+    width:320px; height:100vh;
+    background:var(--card); padding:20px; display:flex; flex-direction:column; gap:10px;
+    border-right: 1px solid var(--border); box-sizing: border-box; z-index: 10;
+}
+
+/* --- Sidebar Right (Data) --- */
+.sidebar-right{
+    width:250px; height:100vh;
+    background:var(--card); padding:20px; display:flex; flex-direction:column; gap:10px;
+    border-left: 1px solid var(--border); box-sizing: border-box; z-index: 10;
+}
+
+.sidebar-scroll{ flex: 1; overflow-y: auto; padding-right: 5px; scrollbar-width: none; }
+.sidebar-scroll::-webkit-scrollbar { display: none; }
+
+input, select{
+    background:#000;border:1px solid var(--border);color:#fff;
+    padding:10px;border-radius:6px;width: 100%;box-sizing: border-box; margin-bottom: 5px;
+}
+
+.btn{
+    padding:12px; border:none; border-radius:6px;
+    cursor:pointer; font-weight:bold; transition: background 0.2s, opacity 0.2s;
+    width: 100%; display: block; text-align: center; font-size: 13px;
+}
+.btn:hover{opacity: 0.8;}
+.btn-blue{background:var(--accent);color:white;}
+.btn-red{background:var(--danger);color:white;}
+.btn-green{background:var(--success);color:white;}
+.btn-gray{background:#444;color:white;}
+
+/* --- Custom Dropdown Menu Style --- */
+.export-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url('data:image/svg+xml;utf8,<svg fill="%23ffffff" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>');
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    cursor: pointer;
+    text-align-last: center;
+}
+.export-select option {
+    background-color: #000;
+    color: #fff;
+    text-align: center;
+}
+
+#fileInput, #projectInput { display: none; }
+
+/* --- Points List Item --- */
+.points-list { display: flex; flex-direction: column; gap: 5px; }
+.point-item {
+    background: #000; padding: 8px 12px; border-radius: 4px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; border-left: 4px solid var(--accent);
+}
+.point-item:hover{ background: #222; cursor: pointer;}
+.point-item.selected { border-color: #f1c40f; background: #222; }
+.del-btn { color: var(--danger); cursor: pointer; font-weight: bold; padding: 0 5px; font-size: 16px; }
+
+/* --- Workspace --- */
+.app-main{ flex:1; height:100vh; display:flex; flex-direction: column; }
+.workspace{
+    flex:1; overflow: hidden; position: relative;
+    background: #09090b; display: flex; align-items: center; justify-content: center;
+}
+canvas{ background: #000; cursor: crosshair; }
+
+.control-label { font-size: 11px; color: #888; margin-top: 5px; display: block; font-weight: bold; text-transform: uppercase; }
+.zoom-controls {
+    position: absolute; bottom: 20px; right: 20px;
+    display: flex; gap: 5px; background: rgba(0,0,0,0.5);
+    padding: 10px; border-radius: 8px;
+}
+.btn-group-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+</style>
+</head>
+
+<body>
+
+    <aside class="sidebar-left">
+        <h2 style="color:var(--accent); margin:0; letter-spacing: -1px; text-align: center; font-size: 20px;">LUQER PRO</h2>
+        
+        <button class="btn btn-blue" onclick="document.getElementById('fileInput').click()">IMPORT IMAGE</button>
+        <input type="file" id="fileInput" accept="image/*">
+        
+        <!-- Import Project -->
+        <button class="btn btn-blue" onclick="importProject()" style="background: #2980b9;">IMPORT PROJECT</button>
+        <input type="file" id="projectInput" accept=".mgn">
+
+        <!-- Unified Save & Export Menu -->
+        <select id="exportSelect" class="btn btn-green export-select" style="background: #16a085;" onchange="handleExport(this)">
+            <option value="" disabled selected>EXPORT / SAVE ▼</option>
+            <option value="save">SAVE PROJECT (Ctrl+S)</option>
+            <option value="pdf">EXPORT PDF REPORT</option>
+            <option value="dxf">EXPORT DXF FORMAT</option>
+            <option value="svg">EXPORT SVG FORMAT</option>
+        </select>
+
+        <hr style="border: 0; border-top: 1px solid #333; margin: 5px 0;">
+
+        <div class="sidebar-scroll">
+            <label class="control-label">GUITAR MODEL</label>
+            <input type="text" id="model" placeholder="Model Name" oninput="triggerAutoSave()">
+            <label class="control-label">SERIAL NUMBER</label>
+            <input type="text" id="serial" placeholder="S/N" oninput="triggerAutoSave()">
+            <label class="control-label">ADDITIONAL INFO</label>
+            <input type="text" id="info" placeholder="Technician/Notes" oninput="triggerAutoSave()">
+
+            <div class="btn-group-2" style="margin-top: 5px;">
+                <button class="btn btn-blue" onclick="undo()">UNDO</button>
+                <button class="btn btn-blue" onclick="redo()">REDO</button>
+            </div>
+
+            <button class="btn btn-green" style="margin-top:5px" onclick="toggleLabels()" id="toggleBtn">LABELS: ON</button>
+            
+            <button class="btn btn-gray" style="margin-top:5px" onclick="toggleHeatmap()" id="heatBtn">HEATMAP: OFF</button>
+            <label class="control-label">HEATMAP OPACITY</label>
+            <input type="range" id="opacity" min="0" max="100" value="50" oninput="draw(); triggerAutoSave();" style="height: 25px;">
+
+            <button class="btn btn-gray" style="margin-top: 10px;" onclick="toggleTraceMode()" id="traceBtn">TRACE: OFF</button>
+            <button class="btn btn-gray" style="margin-top: 5px; font-size: 11px;" onclick="toggleSmoothing()" id="smoothBtn">SMOOTH CURVE: OFF</button>
+        </div>
+
+        <button class="btn btn-red" style="margin-top: auto;" onclick="resetAll()">RESET ALL</button>
+    </aside>
+
+    <main class="app-main">
+        <div class="workspace" id="workspace">
+            <canvas id="canvas"></canvas>
+            <div class="zoom-controls">
+                <button class="btn btn-gray" style="width:45px;" onclick="rotateImage()">↻</button>
+                <button class="btn btn-gray" style="width:35px;" onclick="adjustZoom(1.2)">+</button>
+                <button class="btn btn-gray" style="width:35px;" onclick="adjustZoom(0.8)">-</button>
+                <button class="btn btn-gray" style="width:50px;" onclick="resetZoom()">FIT</button>
+            </div>
+        </div>
+    </main>
+
+    <aside class="sidebar-right">
+        <label class="control-label" style="text-align:center; margin-bottom:10px;">LOGGED POINTS</label>
+        <div class="sidebar-scroll">
+            <div class="points-list" id="pointsList"></div>
+        </div>
+    </aside>
+
+<script>
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+const fileInput=document.getElementById("fileInput");
+const projectInput=document.getElementById("projectInput");
+const workspace=document.getElementById("workspace");
+
+let img=new Image();
+let markers=[];
+let maskPoints=[];
+let traceMode=false;
+let smoothingMode=false;
+let currentPoint=null;
+let inputBuffer="";
+let selectedIndex = null;
+let showLabels=true;
+let heatmapMode=false;
+let historyStack =[];
+let redoStack =[];
+let imgRotation = 0;
+let fileHandle = null;
+
+/* --- Data Management & Auto-Save --- */
+function getProjectData() {
+    return {
+        image: img.src || null,
+        markers: markers,
+        maskPoints: maskPoints,
+        model: document.getElementById("model").value,
+        serial: document.getElementById("serial").value,
+        info: document.getElementById("info").value,
+        heatmapMode: heatmapMode,
+        showLabels: showLabels,
+        traceMode: traceMode,
+        smoothingMode: smoothingMode,
+        opacity: document.getElementById("opacity").value,
+        imgRotation: imgRotation
+    };
+}
+
+function triggerAutoSave() {
+    try {
+        const data = getProjectData();
+        localStorage.setItem("luqer_autosave", JSON.stringify(data));
+    } catch (err) {
+        console.warn("Auto-save disabled: memory limit exceeded.", err);
+    }
+}
+
+function loadProjectData(data) {
+    markers = data.markers ||[];
+    maskPoints = data.maskPoints ||[];
+    
+    document.getElementById("model").value = data.model || "";
+    document.getElementById("serial").value = data.serial || "";
+    document.getElementById("info").value = data.info || "";
+    document.getElementById("opacity").value = data.opacity || "50";
+    
+    heatmapMode = !!data.heatmapMode;
+    showLabels = data.showLabels !== undefined ? data.showLabels : true;
+    traceMode = !!data.traceMode;
+    smoothingMode = !!data.smoothingMode;
+    imgRotation = data.imgRotation || 0;
+    
+    historyStack = [];
+    redoStack =[];
+    
+    updateToggleButtons();
+    updatePointsList();
+    
+    if (data.image) {
+        img = new Image();
+        img.onload = () => { 
+            canvas.width = workspace.clientWidth; 
+            canvas.height = workspace.clientHeight; 
+            resetZoom(); 
+        };
+        img.src = data.image;
+    } else {
+        draw();
+    }
+}
+
+window.onload = () => {
+    updateToggleButtons();
+    try {
+        const saved = localStorage.getItem("luqer_autosave");
+        if(saved) {
+            if(confirm("An unsaved project was found. Would you like to restore it?")) {
+                loadProjectData(JSON.parse(saved));
+            } else {
+                localStorage.removeItem("luqer_autosave");
+            }
+        }
+    } catch (e) {
+        console.warn("Failed to restore save.", e);
+        localStorage.removeItem("luqer_autosave");
+    }
+};
+
+/* --- History (Undo/Redo) --- */
+function saveState(){
+    historyStack.push({
+        markers: JSON.parse(JSON.stringify(markers)),
+        maskPoints: JSON.parse(JSON.stringify(maskPoints))
+    });
+    redoStack =[];
+    triggerAutoSave();
+}
+
+function restoreState(state){
+    markers = JSON.parse(JSON.stringify(state.markers));
+    maskPoints = JSON.parse(JSON.stringify(state.maskPoints));
+    updatePointsList(); draw(); triggerAutoSave();
+}
+
+function undo(){
+    if(historyStack.length === 0) return;
+    redoStack.push({ markers: JSON.parse(JSON.stringify(markers)), maskPoints: JSON.parse(JSON.stringify(maskPoints)) });
+    const prev = historyStack.pop();
+    restoreState(prev);
+}
+
+function redo(){
+    if(redoStack.length === 0) return;
+    historyStack.push({ markers: JSON.parse(JSON.stringify(markers)), maskPoints: JSON.parse(JSON.stringify(maskPoints)) });
+    const next = redoStack.pop();
+    restoreState(next);
+}
+
+let scale = 1, offsetX = 0, offsetY = 0, isPanning = false, dragIndex = null, traceDragIndex = null, startX, startY;
+let dragStateSaved = false;
+
+function rotateImage() {
+    imgRotation = (imgRotation + 90) % 360;
+    draw();
+    triggerAutoSave();
+}
+
+function getImgPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    let sx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    let sy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+
+    let x = (sx - offsetX) / scale;
+    let y = (sy - offsetY) / scale;
+
+    const rad = -imgRotation * Math.PI / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    let rx = x * cos - y * sin;
+    let ry = x * sin + y * cos;
+
+    let nx = rx;
+    let ny = ry;
+    
+    if (imgRotation === 90) { ny += img.height; }
+    else if (imgRotation === 180) { nx += img.width; ny += img.height; }
+    else if (imgRotation === 270) { nx += img.width; }
+
+    return { x: nx, y: ny };
+}
+
+function adjustZoom(factor) { scale *= factor; draw(); }
+
+function resetZoom() {
+    if(!img.src) return;
+    const ratio = Math.min(workspace.clientWidth / img.width, workspace.clientHeight / img.height);
+    scale = ratio * 0.9;
+    offsetX = (workspace.clientWidth - img.width * scale) / 2;
+    offsetY = (workspace.clientHeight - img.height * scale) / 2;
+    imgRotation = 0;
+    draw();
+}
+
+workspace.addEventListener('wheel', (e) => {
+    if(!img.src) return; 
+    e.preventDefault();
+
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    const xBefore = (mouseX - offsetX) / scale;
+    const yBefore = (mouseY - offsetY) / scale;
+
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    scale *= delta;
+
+    offsetX = mouseX - xBefore * scale;
+    offsetY = mouseY - yBefore * scale;
+
+    draw();
+}, { passive: false });
+
+workspace.addEventListener('mousedown', (e) => {
+    if(!img.src) return; // Prevent clicking if no image is loaded
+    
+    if(e.button === 1 || e.altKey) { 
+        isPanning = true; startX = e.clientX - offsetX; startY = e.clientY - offsetY;
+        return;
+    }
+    const p = getImgPos(e);
+    
+    const i = markers.findIndex(m => Math.hypot(m.x - p.x, m.y - p.y) < (15 / scale));
+    if (i !== -1) { 
+        dragIndex = i; selectedIndex = i; dragStateSaved = false; 
+        updatePointsList(); 
+        return; 
+    }
+    
+    if (traceMode) {
+        const i2 = maskPoints.findIndex(pt => Math.hypot(pt.x - p.x, pt.y - p.y) < (10 / scale));
+        if (i2 !== -1) {
+            traceDragIndex = i2;
+            dragStateSaved = false;
+        } else {
+            saveState();
+            maskPoints.push(p);
+        }
+        draw();
+        return;
+    }
+    
+    currentPoint = p; selectedIndex = null; draw();
+});
+
+window.addEventListener('mousemove', (e) => {
+    if(isPanning) { offsetX = e.clientX - startX; offsetY = e.clientY - startY; draw(); }
+    
+    if(dragIndex !== null) { 
+        if(!dragStateSaved) { saveState(); dragStateSaved = true; }
+        const p = getImgPos(e);
+        markers[dragIndex].x = p.x; markers[dragIndex].y = p.y;
+        draw(); 
+    }
+    
+    if(traceDragIndex !== null){
+        if(!dragStateSaved) { saveState(); dragStateSaved = true; }
+        const p = getImgPos(e);
+        maskPoints[traceDragIndex].x = p.x;
+        maskPoints[traceDragIndex].y = p.y;
+        draw();
+    }
+});
+
+window.addEventListener('mouseup', () => { 
+    isPanning = false; 
+    if(dragIndex !== null || traceDragIndex !== null) { triggerAutoSave(); }
+    dragIndex = null; 
+    traceDragIndex = null;
+});
+
+function updateToggleButtons(){
+    const cfg =[{id:"toggleBtn",s:showLabels,l:"LABELS"},{id:"heatBtn",s:heatmapMode,l:"HEATMAP"},{id:"traceBtn",s:traceMode,l:"TRACE"},{id:"smoothBtn",s:smoothingMode,l:"SMOOTH CURVE"}];
+    cfg.forEach(b=>{ const el=document.getElementById(b.id); el.innerText=b.l+": "+(b.s?"ON":"OFF"); el.className="btn "+(b.s?"btn-green":"btn-gray"); });
+}
+
+function toggleLabels() { showLabels = !showLabels; updateToggleButtons(); draw(); triggerAutoSave(); }
+function toggleHeatmap() { heatmapMode = !heatmapMode; updateToggleButtons(); draw(); updatePointsList(); triggerAutoSave(); }
+function toggleTraceMode() { traceMode = !traceMode; updateToggleButtons(); draw(); triggerAutoSave(); }
+function toggleSmoothing() { smoothingMode = !smoothingMode; updateToggleButtons(); draw(); triggerAutoSave(); }
+
+function getSmoothColor(val) {
+    if (markers.length < 2) return { r: 52, g: 152, b: 219, hex: "#3498db" };
+    const values = markers.map(m => m.value), max = Math.max(...values), min = Math.min(...values), range = max - min;
+    const norm = range === 0 ? 0.5 : (val - min) / range;
+    const colors =[{p:0,r:52,g:152,b:219},{p:.25,r:46,g:204,b:113},{p:.5,r:241,g:196,b:15},{p:.75,r:230,g:126,b:34},{p:1,r:231,g:76,b:60}];
+    let l = colors[0], u = colors[4];
+    for (let i = 0; i < 4; i++) if (norm >= colors[i].p && norm <= colors[i+1].p) { l = colors[i]; u = colors[i+1]; break; }
+    const sN = (norm - l.p) / (u.p - l.p);
+    const r = Math.round(l.r + sN * (u.r - l.r)), g = Math.round(l.g + sN * (u.g - l.g)), b = Math.round(l.b + sN * (u.b - l.b));
+    return { r, g, b, hex: `rgb(${r},${g},${b})` };
+}
+
+function getCurvePoints(pts, isClosed) {
+    if (pts.length < 3) return pts;
+    let res =[], tension = 0.5, _pts = pts.slice(0);
+    if (isClosed) { _pts.unshift(pts[pts.length - 1]); _pts.push(pts[0]); _pts.push(pts[1]); }
+    else { _pts.unshift(pts[0]); _pts.push(pts[pts.length - 1]); }
+    for (let i = 1; i < (_pts.length - 2); i++) {
+        for (let t = 0; t <= 16; t++) {
+            let st = t / 16, c1 = 2*Math.pow(st,3)-3*Math.pow(st,2)+1, c2 = -2*Math.pow(st,3)+3*Math.pow(st,2), c3 = Math.pow(st,3)-2*Math.pow(st,2)+st, c4 = Math.pow(st,3)-Math.pow(st,2);
+            let t1x = (_pts[i+1].x-_pts[i-1].x)*tension, t2x = (_pts[i+2].x-_pts[i].x)*tension, t1y = (_pts[i+1].y-_pts[i-1].y)*tension, t2y = (_pts[i+2].y-_pts[i].y)*tension;
+            res.push({ x: c1*_pts[i].x + c2*_pts[i+1].x + c3*t1x + c4*t2x, y: c1*_pts[i].y + c2*_pts[i+1].y + c3*t1y + c4*t2y });
+        }
+    }
+    return res;
+}
+
+function drawSurfaceMap(tCtx, w, h) {
+    if (markers.length < 3) return;
+    const grid = 10, opacity = document.getElementById("opacity").value / 100;
+    tCtx.save();
+    if (maskPoints.length > 2) {
+        tCtx.beginPath();
+        const pts = smoothingMode ? getCurvePoints(maskPoints, true) : maskPoints;
+        tCtx.moveTo(pts[0].x, pts[0].y);
+        for(let i=1; i<pts.length; i++) tCtx.lineTo(pts[i].x, pts[i].y);
+        tCtx.closePath(); tCtx.clip();
+    }
+    for (let x = 0; x < w; x += grid) {
+        for (let y = 0; y < h; y += grid) {
+            let sumW = 0, sumV = 0, found = false;
+            for (let m of markers) {
+                const d = Math.hypot(x - m.x, y - m.y);
+                if (d < grid) { sumV = m.value; found = true; break; }
+                const weight = 1 / Math.pow(d, 2.5); sumV += m.value * weight; sumW += weight;
+            }
+            const val = found ? sumV : (sumV / sumW);
+            tCtx.globalAlpha = opacity; tCtx.fillStyle = getSmoothColor(val).hex; tCtx.fillRect(x, y, grid, grid);
+        }
+    }
+    tCtx.restore();
+}
+
+function draw(){
+    // Always clear the canvas before rendering, to prevent visual ghosting on Reset
+    ctx.setTransform(1, 0, 0, 1, 0, 0); 
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Stop rendering if no image is currently active
+    if(!img.src) return;
+    
+    ctx.translate(offsetX, offsetY); ctx.scale(scale, scale);
+    ctx.rotate(imgRotation * Math.PI / 180);
+    if(imgRotation === 90) ctx.translate(0, -img.height);
+    else if(imgRotation === 180) ctx.translate(-img.width, -img.height);
+    else if(imgRotation === 270) ctx.translate(-img.width, 0);
+    ctx.drawImage(img,0,0);
+    
+    if (heatmapMode) drawSurfaceMap(ctx, img.width, img.height);
+    
+    if (maskPoints.length > 0) {
+        ctx.beginPath(); ctx.strokeStyle = "#9b59b6"; ctx.lineWidth = 2/scale;
+        const pts = (smoothingMode && maskPoints.length > 2) ? getCurvePoints(maskPoints, !traceMode) : maskPoints;
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for(let i=1; i<pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        if(!traceMode) ctx.closePath();
+        ctx.stroke();
+        maskPoints.forEach(pt=>{ ctx.beginPath(); ctx.arc(pt.x, pt.y, 4/scale, 0, Math.PI*2); ctx.fillStyle="#9b59b6"; ctx.fill(); });
+    }
+    
+    markers.forEach((m, i)=>{
+        const c = getSmoothColor(m.value).hex;
+        ctx.beginPath(); ctx.arc(m.x, m.y, 6/scale, 0, Math.PI*2);
+        ctx.fillStyle = c; ctx.fill(); 
+        ctx.strokeStyle = (selectedIndex === i) ? "#fff" : "rgba(255,255,255,0.5)"; 
+        ctx.lineWidth = 2/scale; ctx.stroke();
+        
+        ctx.save();
+        ctx.translate(m.x, m.y);
+        ctx.rotate(-imgRotation * Math.PI / 180);
+        ctx.fillStyle = "#fff"; 
+        ctx.font = `bold ${10/scale}px Arial`; 
+        ctx.textAlign = "center"; 
+        ctx.fillText(i+1, 0, -(10/scale));
+        
+        if(showLabels){ 
+            ctx.font = `${12/scale}px Arial`; 
+            ctx.textAlign = "left"; 
+            ctx.fillText(m.value + " mm", (12/scale), 0); 
+        }
+        ctx.restore();
+    });
+    
+    if(currentPoint && !traceMode){
+        ctx.beginPath(); ctx.arc(currentPoint.x, currentPoint.y, 6/scale, 0, Math.PI*2); 
+        ctx.fillStyle="#f1c40f"; ctx.fill();
+        if(inputBuffer){ 
+            ctx.save();
+            ctx.translate(currentPoint.x, currentPoint.y);
+            ctx.rotate(-imgRotation * Math.PI / 180);
+            ctx.fillStyle="#f1c40f"; 
+            ctx.font=`bold ${14/scale}px Arial`; 
+            ctx.textAlign = "left";
+            ctx.fillText(inputBuffer+" mm", (12/scale), 0); 
+            ctx.restore();
+        }
+    }
+}
+
+fileInput.onchange=e=>{
+    const file=e.target.files[0]; if(!file) return;
+    fileHandle = null; 
+    const reader=new FileReader();
+    reader.onload=evt=>{
+        img=new Image(); 
+        img.onload=()=>{ 
+            canvas.width = workspace.clientWidth; 
+            canvas.height = workspace.clientHeight; 
+            resetZoom(); 
+            triggerAutoSave(); 
+        }; 
+        img.src=evt.target.result;
+    };
+    reader.readAsDataURL(file);
+    fileInput.value = "";
+};
+
+/* --- Advanced File System Import / Export --- */
+async function importProject() {
+    try {
+        if (window.showOpenFilePicker) {
+            const [handle] = await window.showOpenFilePicker({
+                types:[{ description: 'Luqer Project', accept: {'text/plain': ['.mgn'], 'application/json': ['.mgn']} }]
+            });
+            fileHandle = handle;
+            const file = await handle.getFile();
+            const text = await file.text();
+            loadProjectData(JSON.parse(text));
+        } else {
+            document.getElementById('projectInput').click();
+        }
+    } catch (err) {
+        if(err.name !== 'AbortError') { 
+            // Crucial Fallback: If FileSystem API errors out, force old-school input click
+            document.getElementById('projectInput').click();
+        }
+    }
+}
+
+projectInput.onchange = e => {
+    const file = e.target.files[0]; if(!file) return;
+    fileHandle = null; 
+    const reader = new FileReader();
+    reader.onload = evt => {
+        try {
+            const data = JSON.parse(evt.target.result);
+            loadProjectData(data);
+        } catch (err) {
+            alert("Invalid project file.");
+        }
+    };
+    reader.readAsText(file);
+    projectInput.value = "";
+};
+
+async function saveProject() {
+    const dataStr = JSON.stringify(getProjectData());
+    try {
+        if (window.showSaveFilePicker) {
+            if (!fileHandle) {
+                let fname = document.getElementById("model").value.trim() || "Luqer_Project";
+                fileHandle = await window.showSaveFilePicker({
+                    suggestedName: fname + '.mgn',
+                    types:[{ description: 'Luqer Project', accept: {'text/plain': ['.mgn'], 'application/json':['.mgn']} }],
+                });
+            }
+            const writable = await fileHandle.createWritable();
+            await writable.write(dataStr);
+            await writable.close();
+            showSavedFeedback();
+        } else {
+            downloadFallback(dataStr);
+        }
+    } catch (err) {
+        if(err.name !== 'AbortError') { 
+            downloadFallback(dataStr); 
+        }
+    }
+}
+
+function showSavedFeedback() {
+    const select = document.getElementById("exportSelect");
+    const originalBg = select.style.background;
+    select.style.background = "#27ae60"; 
+    select.options[0].text = "✓ SAVED!";
+    setTimeout(() => {
+        select.style.background = originalBg;
+        select.options[0].text = "EXPORT / SAVE ▼";
+    }, 2000);
+}
+
+function downloadFallback(dataStr) {
+    const blob = new Blob([dataStr], {type: "application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    let fname = document.getElementById("model").value.trim() || "Luqer_Project";
+    a.download = fname + ".mgn";
+    a.click();
+}
+
+function handleExport(select) {
+    const val = select.value;
+    if (val === "pdf") exportPDF();
+    else if (val === "dxf") exportDXF();
+    else if (val === "svg") exportSVG();
+    else if (val === "save") saveProject();
+    select.value = ""; 
+}
+
+/* --- Keyboard & Interaction Setup --- */
+window.onkeydown = e => {
+    // Intercept Ctrl+S or Cmd+S
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveProject();
+        return;
+    }
+
+    if(!img.src || !currentPoint || traceMode) return;
+    if(e.key==="Enter"){ 
+        if(inputBuffer==="")return; 
+        saveState(); 
+        markers.push({ x:currentPoint.x, y:currentPoint.y, value:parseFloat(inputBuffer) }); 
+        inputBuffer=""; currentPoint=null; updatePointsList(); draw(); triggerAutoSave();
+    }
+    else if(e.key==="Backspace"){ inputBuffer=inputBuffer.slice(0,-1); draw(); } 
+    else if(/^[0-9.\-]$/.test(e.key)){ inputBuffer+=e.key; draw(); }
+};
+
+function updatePointsList(){
+    const list = document.getElementById("pointsList"); list.innerHTML = '';
+    markers.forEach((m, i) => {
+        const item = document.createElement("div");
+        item.className = `point-item ${selectedIndex === i ? 'selected' : ''}`;
+        item.style.borderLeftColor = getSmoothColor(m.value).hex;
+        item.innerHTML = `<span><b>${i+1}.</b> ${m.value}mm</span><span onclick="deletePoint(${i}, event)" class="del-btn">✕</span>`;
+        item.onclick = () => { selectedIndex = i; draw(); };
+        list.appendChild(item);
+    });
+}
+
+function deletePoint(i, e){ e.stopPropagation(); saveState(); markers.splice(i, 1); updatePointsList(); draw(); triggerAutoSave(); }
+
+function resetAll() { 
+    if(confirm("Reset everything?")){ 
+        // Reset all application state tracking variables
+        markers=[]; 
+        maskPoints=[]; 
+        img=new Image(); 
+        
+        document.getElementById("model").value = "";
+        document.getElementById("serial").value = "";
+        document.getElementById("info").value = "";
+        document.getElementById("opacity").value = "50";
+        
+        fileHandle = null;
+        historyStack =[];
+        redoStack =[];
+        currentPoint = null;
+        inputBuffer = "";
+        selectedIndex = null;
+        dragIndex = null;
+        traceDragIndex = null;
+        imgRotation = 0;
+        scale = 1;
+        offsetX = 0;
+        offsetY = 0;
+        
+        localStorage.removeItem("Luqer_autosave");
+        
+        draw(); 
+        updatePointsList(); 
+        updateToggleButtons();
+    } 
+}
+
+/* --- Export Modules --- */
+function exportSVG() {
+    if (!img.src || maskPoints.length < 2) return;
+    let svg = `<svg viewBox="0 0 ${img.width} ${img.height}" xmlns="http://www.w3.org/2000/svg">`;
+    const pts = smoothingMode ? getCurvePoints(maskPoints, true) : maskPoints;
+    let d = `M ${pts[0].x} ${pts[0].y} ` + pts.map(p => `L ${p.x} ${p.y}`).join(' ') + " Z";
+    svg += `<path d="${d}" fill="none" stroke="purple" stroke-width="2"/></svg>`;
+    const blob = new Blob([svg], {type: 'image/svg+xml'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = "Luqer_Outline.svg"; a.click();
+}
+
+function exportDXF() {
+    if (maskPoints.length < 2) return;
+    let dxf = `0\nSECTION\n2\nENTITIES\n`;
+    const pts = smoothingMode ? getCurvePoints(maskPoints, true) : maskPoints;
+    for (let i = 0; i < pts.length; i++) {
+        let n = pts[(i+1)%pts.length];
+        dxf += `0\nLINE\n8\nOutline\n10\n${pts[i].x}\n20\n${-pts[i].y}\n11\n${n.x}\n21\n${-n.y}\n`;
+    }
+    dxf += `0\nENDSEC\n0\nEOF`;
+    const b = new Blob([dxf], {type: 'application/dxf'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = "Luqer_Outline.dxf"; a.click();
+}
+
+function exportPDF(){
+    if (!img.src) { alert("Please import an image first."); return; }
+    const { jsPDF } = window.jspdf;
+    const pdf=new jsPDF("landscape","mm","a4");
+    const pageW=297, pageH=210, margin=10, rightW=85;
+    const eCanv = document.createElement("canvas");
+    const eCtx = eCanv.getContext("2d");
+    eCanv.width = img.width; eCanv.height = img.height;
+    eCtx.drawImage(img,0,0);
+    if(heatmapMode) drawSurfaceMap(eCtx, img.width, img.height);
+    markers.forEach((m, i)=>{
+        eCtx.beginPath(); eCtx.arc(m.x, m.y, 10, 0, Math.PI*2);
+        eCtx.fillStyle = getSmoothColor(m.value).hex; eCtx.fill();
+        eCtx.strokeStyle = "white"; eCtx.lineWidth = 2; eCtx.stroke();
+        eCtx.fillStyle="white"; eCtx.font="bold 16px Arial"; eCtx.textAlign="center";
+        eCtx.fillText(i+1, m.x, m.y-15);
+    });
+    const imgData = eCanv.toDataURL("image/jpeg", 0.9);
+    const r = img.width/img.height;
+    let w = pageW-rightW-20, h = w/r;
+    if(h > pageH-20){ h=pageH-20; w=h*r; }
+    pdf.addImage(imgData, "JPEG", 10, (pageH-h)/2, w, h);
+    pdf.setFillColor(28, 31, 36); pdf.rect(pageW-rightW, 0, rightW, pageH, 'F');
+    pdf.setTextColor(52, 152, 219); pdf.setFontSize(14); pdf.text("LUQER REPORT", pageW-rightW+5, 15);
+    const now = new Date();
+    const dStr = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+    pdf.setTextColor(150,150,150); pdf.setFontSize(8); pdf.text(dStr, pageW-5, 15, {align:'right'});
+    pdf.setTextColor(255,255,255); pdf.setFontSize(9);
+    let curY = 30;
+    const meta =[{l:"Model", v:document.getElementById("model").value}, {l:"Serial", v:document.getElementById("serial").value}, {l:"Info", v:document.getElementById("info").value}];
+    meta.forEach(m => { const txt = pdf.splitTextToSize(`${m.l}: ${m.v || "N/A"}`, rightW-10); pdf.text(txt, pageW-rightW+5, curY); curY += (txt.length*4.5)+2; });
+    curY += 5; pdf.setDrawColor(80,80,80); pdf.line(pageW-rightW+5, curY, pageW-5, curY);
+    curY += 7; pdf.text("Measurements (mm):", pageW-rightW+5, curY); curY += 8;
+    const startY = curY; let currentCol = 0; let itemY = startY;
+    pdf.setFontSize(7);
+    markers.forEach((m, i) => { if (itemY > pageH - 10) { currentCol++; itemY = startY; }
+        const x = (pageW-rightW+5) + (currentCol*26);
+        if (x < pageW-5) { pdf.setTextColor(180,180,180); pdf.text(`${i+1}.`, x, itemY); const c = getSmoothColor(m.value); pdf.setTextColor(c.r, c.g, c.b); pdf.text(`${m.value}`, x+6, itemY); itemY += 4.5; }
+    });
+    
+    let fname = document.getElementById("model").value.trim() || "Luqer";
+    pdf.save(fname + "_Report.pdf");
+}
+</script>
+</body>
+</html>
