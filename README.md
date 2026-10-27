@@ -9,7 +9,7 @@ The included Luqer Mapper Pro software uses Inverse Distance Weighting (IDW) to 
 The Luqer hardware acts as a Native USB HID Keyboard. With one click of the physical button, the precise 2-decimal measurement is "typed" directly into the digital report or any spreadsheet.
 
 💻 Software: Luqer Mapper Pro
-The software is provided as a Standalone Portable Windows Application (.exe) and a lightweight HTML/JS file.
+The software is provided as a Standalone Portable Windows Application (.exe) and a lightweight HTML/JS file. All downloads are available on the Releases page (see below).
 Offline Ready: Works 100% without an internet connection.
 Instrument Tracing: Custom boundary tracing with Cardinal Spline smoothing.
 Advanced Navigation: Infinite Zoom (point-to-cursor) and Smooth Pan.
@@ -26,8 +26,18 @@ Smart Sleep: Automatic OLED protection after 60 seconds of inactivity; wakes ins
 
 🚀 Quick Start
 Connect: Plug the Magtune into your PC via USB-C.
-Open Mapper
+Open Mapper → [Download Luqer Mapper Pro](https://github.com/Dimitrios-Katsanis-luthier/LUQER/releases/latest)
 Map: Import a photo, trace the outline, and start logging points by clicking the image and pressing HOLD on the device.
+
+
+📥 Downloads
+All installers and the universal browser version live on the Releases page:
+👉 https://github.com/Dimitrios-Katsanis-luthier/LUQER/releases/latest
+
+⬇️ Windows — Luqer.Mapper.Pro_1.9.0_x64-setup.exe (installer) or Luqer-Mapper-Pro-portable-windows.zip (portable, no install)
+⬇️ macOS (Apple Silicon M1/M2/M3/M4) — Luqer.Mapper.Pro_1.9.0_aarch64.dmg
+⬇️ Linux — Luqer.Mapper.Pro_1.9.0_amd64.AppImage (portable) or Luqer.Mapper.Pro_1.9.0_amd64.deb (Ubuntu/Debian)
+⬇️ Universal (any OS, any browser) — Luqer-Mapper-Pro-V1.9.html
 
 🛠 Technical Specifications
 Attribute	Specification
