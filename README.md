@@ -37,6 +37,7 @@ All installers and the universal browser version live on the Releases page:
 ⬇️ Windows — Luqer.Mapper.Pro_1.9.0_x64-setup.exe (installer) or Luqer-Mapper-Pro-portable-windows.zip (portable, no install)
 ⬇️ macOS (Apple Silicon M1/M2/M3/M4) — Luqer.Mapper.Pro_1.9.0_aarch64.dmg
 ⬇️ Linux — Luqer.Mapper.Pro_1.9.0_amd64.AppImage (portable) or Luqer.Mapper.Pro_1.9.0_amd64.deb (Ubuntu/Debian)
+⬇️ Android (arm64 phones) — Luqer-Mapper-Pro-1.9.0-arm64.apk
 ⬇️ Universal (any OS, any browser) — Luqer-Mapper-Pro-V1.9.html
 
 🛠 Technical Specifications
